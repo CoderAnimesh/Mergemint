@@ -11,7 +11,7 @@ export function Footer() {
           </div>
           <span className="text-sm font-semibold text-white">MergeMint</span>
           <span className="text-xs text-zinc-500">
-            • Automated Changelogs &amp; Developer Roadmaps
+            • © 2026 MergeMint • MIT License
           </span>
         </div>
 

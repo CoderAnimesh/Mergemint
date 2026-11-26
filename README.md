@@ -72,3 +72,12 @@ Open **http://localhost:3000**.
 | `/api/v1/roadmap/[id]/vote` | `POST` | Atomically increment/decrement roadmap votes |
 | `/api/v1/keys` | `GET`, `POST`, `DELETE` | Manage SHA-256 hashed personal API tokens |
 | `/api/v1/rss` | `GET` | RSS 2.0 XML changelog feed (`?project=acme-cloud`) |
+
+---
+
+## License & Copyright
+
+Copyright (c) 2026 **MergeMint**. All rights reserved.
+
+Licensed under the [MIT License](./LICENSE).
+
