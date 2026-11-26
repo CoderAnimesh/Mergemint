@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "node --require ./scripts/fix-win-readlink.cjs ../../node_modules/next/dist/bin/next build --webpack",
+    "build": "prisma generate && next build",
+    "build:win": "node --require ./scripts/fix-win-readlink.cjs ../../node_modules/next/dist/bin/next build --webpack",
     "start": "next start",
+    "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
