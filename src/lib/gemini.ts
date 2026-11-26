@@ -40,35 +40,38 @@ function heuristicSummarize(commits: RawCommitInput[]): GeneratedReleaseNotes {
   const bugFixes: string[] = [];
 
   for (const commit of commits) {
-    const firstLine = commit.message.split("\n")[0].trim();
+    const firstLine = (commit.message || "").split("\n")[0].trim();
     const cleaned = firstLine
       .replace(/^(feat|feature|fix|bugfix|perf|refactor|docs|chore)(\([^)]+\))?:\s*/i, "")
       .replace(/^\w/, (c) => c.toUpperCase());
 
+    if (!cleaned) continue;
+
+    const entryText = commit.diff
+      ? `${cleaned} (${commit.diff.split("\n").pop()?.trim() || "files updated"})`
+      : cleaned;
+
     if (/^(feat|feature|add|new)/i.test(firstLine)) {
-      features.push(cleaned);
+      features.push(entryText);
     } else if (/^(fix|bug|hotfix|patch|resolve)/i.test(firstLine)) {
-      bugFixes.push(cleaned);
+      bugFixes.push(entryText);
     } else {
-      improvements.push(cleaned);
+      improvements.push(entryText);
     }
   }
 
   const total = features.length + improvements.length + bugFixes.length;
-  const title =
-    features.length > 0
-      ? `${features[0].slice(0, 48)}${features[0].length > 48 ? "..." : ""}`
-      : `Release Update (${total} changes)`;
+  const firstHeadline = features[0] || improvements[0] || bugFixes[0];
+  const title = firstHeadline
+    ? `${firstHeadline.slice(0, 56)}${firstHeadline.length > 56 ? "..." : ""}`
+    : `Release Update (${total} ${total === 1 ? "change" : "changes"})`;
 
   return {
     title,
-    summary: `Automated release summary synthesized from ${commits.length} commit${
-      commits.length === 1 ? "" : "s"
-    }, highlighting ${features.length} new feature${features.length === 1 ? "" : "s"}, ${
-      improvements.length
-    } improvement${improvements.length === 1 ? "" : "s"}, and ${bugFixes.length} bug fix${
-      bugFixes.length === 1 ? "" : "es"
-    }.`,
+    summary: `Automated release summary synthesized from ${commits.length} commit${commits.length === 1 ? "" : "s"
+      }, highlighting ${features.length} new feature${features.length === 1 ? "" : "s"}, ${improvements.length
+      } improvement${improvements.length === 1 ? "" : "s"}, and ${bugFixes.length} bug fix${bugFixes.length === 1 ? "" : "es"
+      }.`,
     versionSuggestion: features.length > 0 ? "v1.4.0" : "v1.3.2",
     features,
     improvements,
@@ -95,8 +98,7 @@ export async function generateChangelogFromCommits(
     const commitText = inputCommits
       .map(
         (c, i) =>
-          `${i + 1}. [${c.sha ? c.sha.slice(0, 7) : "local"}] ${c.message}${
-            c.author ? ` (by ${c.author})` : ""
+          `${i + 1}. [${c.sha ? c.sha.slice(0, 7) : "local"}] ${c.message}${c.author ? ` (by ${c.author})` : ""
           }${c.diff ? `\nDiff snippet:\n${c.diff.slice(0, 600)}` : ""}`
       )
       .join("\n");

@@ -26,6 +26,12 @@ import {
   Loader2,
   X,
   Calendar,
+  Download,
+  FileText,
+  Printer,
+  Zap,
+  Wrench,
+  Bug,
 } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
 
@@ -55,6 +61,11 @@ interface ChangelogItem {
   summary: string;
   status: "PUBLISHED" | "DRAFT";
   publishedAt: string | null;
+  createdAt?: string;
+  features?: string[];
+  improvements?: string[];
+  bugFixes?: string[];
+  projectSlug?: string;
 }
 
 interface RoadmapEntry {
@@ -229,15 +240,25 @@ function DashboardInner() {
           if (data.plan) setPlan(data.plan);
 
           if (loadedProjects.length > 0) {
+            const chgResults = await Promise.all(
+              loadedProjects.map(async (proj) => {
+                const r = await fetch(
+                  `/api/v1/changelogs?project=${encodeURIComponent(proj.slug)}`
+                );
+                if (!r.ok) return [] as ChangelogItem[];
+                const d = (await r.json()) as { changelogs?: ChangelogItem[] };
+                return (d.changelogs || []).map((c) => ({
+                  ...c,
+                  projectSlug: proj.slug,
+                }));
+              })
+            );
+            setChangelogs(chgResults.flat());
+
             const firstSlug = loadedProjects[0].slug;
-            const [chgRes, rmRes] = await Promise.all([
-              fetch(`/api/v1/changelogs?project=${encodeURIComponent(firstSlug)}`),
-              fetch(`/api/v1/roadmap?project=${encodeURIComponent(firstSlug)}`),
-            ]);
-            if (chgRes.ok) {
-              const chgData = (await chgRes.json()) as { changelogs?: ChangelogItem[] };
-              setChangelogs(Array.isArray(chgData.changelogs) ? chgData.changelogs : []);
-            }
+            const rmRes = await fetch(
+              `/api/v1/roadmap?project=${encodeURIComponent(firstSlug)}`
+            );
             if (rmRes.ok) {
               const rmData = (await rmRes.json()) as { items?: RoadmapEntry[] };
               setRoadmapItems(Array.isArray(rmData.items) ? rmData.items : []);
@@ -532,6 +553,93 @@ function DashboardInner() {
     }
   };
 
+  const downloadFile = (filename: string, content: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportChangelogsCsv = (items: ChangelogItem[]) => {
+    const escapeCsv = (val: string) => `"${val.replace(/"/g, '""')}"`;
+    const rows: string[] = [
+      ["Project", "Version", "Title", "Status", "Date", "Category", "Detail"].join(","),
+    ];
+    for (const c of items) {
+      const dateStr = (c.publishedAt || c.createdAt || "").slice(0, 10);
+      const proj = c.projectSlug || activeProjectSlug;
+      const pushItems = (cat: string, list?: string[]) => {
+        if (!list || list.length === 0) return;
+        for (const item of list) {
+          rows.push(
+            [proj, c.version, c.title, c.status, dateStr, cat, item]
+              .map(escapeCsv)
+              .join(",")
+          );
+        }
+      };
+      pushItems("Summary", [c.summary]);
+      pushItems("Features", c.features);
+      pushItems("Improvements", c.improvements);
+      pushItems("Bug Fixes", c.bugFixes);
+    }
+    downloadFile("mergemint-changelogs.csv", rows.join("\n"), "text/csv;charset=utf-8;");
+  };
+
+  const exportChangelogsDocs = (items: ChangelogItem[]) => {
+    const sections = items
+      .map((c) => {
+        const listHtml = (title: string, arr?: string[]) =>
+          arr && arr.length > 0
+            ? `<h3>${title}</h3><ul>${arr.map((i) => `<li>${i}</li>`).join("")}</ul>`
+            : "";
+        return `
+          <div style="margin-bottom:28px;border-bottom:1px solid #e4e4e7;padding-bottom:16px;">
+            <h2>${c.version} — ${c.title} (${c.status})</h2>
+            <p style="color:#52525b;">${c.summary}</p>
+            ${listHtml("Features", c.features)}
+            ${listHtml("Improvements", c.improvements)}
+            ${listHtml("Bug Fixes", c.bugFixes)}
+          </div>`;
+      })
+      .join("");
+    const docHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>MergeMint Changelogs</title></head><body style="font-family:Arial,sans-serif;padding:24px;"><h1>MergeMint Release Notes</h1>${sections}</body></html>`;
+    downloadFile("mergemint-changelogs.doc", docHtml, "application/msword");
+  };
+
+  const exportChangelogsPdf = (items: ChangelogItem[]) => {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    const sections = items
+      .map((c) => {
+        const listHtml = (title: string, arr?: string[]) =>
+          arr && arr.length > 0
+            ? `<h3>${title}</h3><ul>${arr.map((i) => `<li>${i}</li>`).join("")}</ul>`
+            : "";
+        return `
+          <section style="margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid #e4e4e7;">
+            <div style="font-size:12px;color:#059669;font-weight:700;">${c.version} • ${c.status}</div>
+            <h2 style="margin:4px 0 8px;">${c.title}</h2>
+            <p style="color:#3f3f46;font-size:13px;">${c.summary}</p>
+            ${listHtml("Features", c.features)}
+            ${listHtml("Improvements", c.improvements)}
+            ${listHtml("Bug Fixes", c.bugFixes)}
+          </section>`;
+      })
+      .join("");
+    win.document.write(
+      `<!DOCTYPE html><html><head><title>MergeMint Changelogs PDF</title><style>body{font-family:system-ui,sans-serif;padding:32px;color:#09090b;max-width:800px;margin:auto}h3{font-size:13px;margin:12px 0 4px}ul{margin:0;padding-left:18px;font-size:13px}</style></head><body><h1>MergeMint Release Changelogs</h1>${sections}</body></html>`
+    );
+    win.document.close();
+    win.focus();
+    win.print();
+  };
+
   const activeProjectSlug = projects[0]?.slug || "acme-cloud";
 
   return (
@@ -783,11 +891,45 @@ function DashboardInner() {
           {/* AI RELEASE DRAFTS TAB */}
           {activeTab === "drafts" && (
             <div className="space-y-4">
+              {changelogs.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#111114]/80 px-5 py-3.5">
+                  <span className="text-xs text-zinc-400">
+                    Showing {changelogs.length} detailed changelog(s)
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => exportChangelogsCsv(changelogs)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/[0.08]"
+                    >
+                      <Download className="h-3.5 w-3.5 text-emerald-400" />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportChangelogsDocs(changelogs)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/[0.08]"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-sky-400" />
+                      <span>Export Docs (.doc)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportChangelogsPdf(changelogs)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/[0.08]"
+                    >
+                      <Printer className="h-3.5 w-3.5 text-violet-400" />
+                      <span>Export PDF</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {changelogs.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-[#111114]/40 p-10 text-center text-xs text-zinc-400">
-                  No AI release drafts yet. Connect a repository and run{" "}
-                  <code className="font-mono text-emerald-300">mergemint init</code> or
-                  push commits via GitHub webhook.
+                  No AI release drafts yet. Commit in your repository or run{" "}
+                  <code className="font-mono text-emerald-300">mergemint push</code> to
+                  generate your first Gemini changelog.
                 </div>
               ) : (
                 changelogs.map((entry) => (
@@ -796,7 +938,12 @@ function DashboardInner() {
                     className="rounded-2xl border border-white/[0.08] bg-[#111114]/80 p-6"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {entry.projectSlug && (
+                          <span className="rounded border border-white/10 bg-white/[0.04] px-2 py-0.5 font-mono text-[11px] text-zinc-300">
+                            {entry.projectSlug}
+                          </span>
+                        )}
                         <span className="rounded-md bg-emerald-500/20 px-2.5 py-0.5 font-mono text-xs text-emerald-300">
                           {entry.version}
                         </span>
@@ -813,20 +960,95 @@ function DashboardInner() {
                           {entry.status}
                         </span>
                       </div>
-                      {entry.status === "DRAFT" && (
+
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => handlePublishDraft(entry.id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400"
+                          onClick={() => exportChangelogsCsv([entry])}
+                          className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-white/[0.08]"
                         >
-                          <Send className="h-3.5 w-3.5" />
-                          <span>Publish Release</span>
+                          CSV
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => exportChangelogsDocs([entry])}
+                          className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-white/[0.08]"
+                        >
+                          Docs
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => exportChangelogsPdf([entry])}
+                          className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-300 hover:bg-white/[0.08]"
+                        >
+                          PDF
+                        </button>
+                        {entry.status === "DRAFT" && (
+                          <button
+                            type="button"
+                            onClick={() => handlePublishDraft(entry.id)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400"
+                          >
+                            <Send className="h-3.5 w-3.5" />
+                            <span>Publish</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
+
                     <p className="mt-3 text-xs leading-relaxed text-zinc-400">
                       {entry.summary}
                     </p>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/[0.04] p-3.5 text-xs">
+                        <div className="mb-2 flex items-center gap-1.5 font-semibold text-emerald-400">
+                          <Zap className="h-3.5 w-3.5" />
+                          <span>Features ({entry.features?.length || 0})</span>
+                        </div>
+                        {entry.features && entry.features.length > 0 ? (
+                          <ul className="space-y-1 text-zinc-300">
+                            {entry.features.map((f) => (
+                              <li key={f}>• {f}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-zinc-500">None in this release</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-sky-500/15 bg-sky-500/[0.04] p-3.5 text-xs">
+                        <div className="mb-2 flex items-center gap-1.5 font-semibold text-sky-400">
+                          <Wrench className="h-3.5 w-3.5" />
+                          <span>Improvements ({entry.improvements?.length || 0})</span>
+                        </div>
+                        {entry.improvements && entry.improvements.length > 0 ? (
+                          <ul className="space-y-1 text-zinc-300">
+                            {entry.improvements.map((imp) => (
+                              <li key={imp}>• {imp}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-zinc-500">None in this release</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] p-3.5 text-xs">
+                        <div className="mb-2 flex items-center gap-1.5 font-semibold text-amber-400">
+                          <Bug className="h-3.5 w-3.5" />
+                          <span>Bug Fixes ({entry.bugFixes?.length || 0})</span>
+                        </div>
+                        {entry.bugFixes && entry.bugFixes.length > 0 ? (
+                          <ul className="space-y-1 text-zinc-300">
+                            {entry.bugFixes.map((bug) => (
+                              <li key={bug}>• {bug}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-zinc-500">None in this release</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))
               )}
@@ -1265,6 +1487,13 @@ function DashboardInner() {
               </div>
 
               <div className="mt-5 space-y-4 text-xs">
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-[11px] text-amber-200">
+                  <strong>Test Mode Preview:</strong> Add{" "}
+                  <code className="font-mono">RAZORPAY_KEY_ID</code> &amp;{" "}
+                  <code className="font-mono">RAZORPAY_KEY_SECRET</code> in{" "}
+                  <code className="font-mono">apps/web/.env</code> and restart the
+                  server to open the official Razorpay popup.
+                </div>
                 <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#09090B] p-3.5">
                   <div>
                     <div className="text-zinc-300">

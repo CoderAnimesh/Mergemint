@@ -58,6 +58,39 @@ export async function POST(req: NextRequest) {
       "acme-cloud";
 
     if (body.action === "init") {
+      if (isDatabaseConfigured() && auth.userId) {
+        let workspace = await prisma.workspace.findFirst({
+          where: { ownerId: auth.userId },
+        });
+        if (!workspace) {
+          workspace = await prisma.workspace.create({
+            data: {
+              name: "My Workspace",
+              slug: `ws-${auth.userId.slice(0, 8)}`,
+              ownerId: auth.userId,
+              plan: "HOBBY",
+            },
+          });
+        }
+        const projectName = slug
+          .split("-")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+        await prisma.project.upsert({
+          where: { slug },
+          update: {
+            defaultBranch: body.branch || "main",
+          },
+          create: {
+            name: projectName,
+            slug,
+            description: `Synced from ${body.repoRemote || "local git"}`,
+            defaultBranch: body.branch || "main",
+            workspaceId: workspace.id,
+          },
+        });
+      }
+
       return NextResponse.json({
         ok: true,
         project: {
@@ -82,7 +115,35 @@ export async function POST(req: NextRequest) {
       let draftId = `draft_${Date.now()}`;
 
       if (isDatabaseConfigured()) {
-        const project = await prisma.project.findUnique({ where: { slug } });
+        let project = await prisma.project.findUnique({ where: { slug } });
+        if (!project && auth.userId) {
+          let workspace = await prisma.workspace.findFirst({
+            where: { ownerId: auth.userId },
+          });
+          if (!workspace) {
+            workspace = await prisma.workspace.create({
+              data: {
+                name: "My Workspace",
+                slug: `ws-${auth.userId.slice(0, 8)}`,
+                ownerId: auth.userId,
+                plan: "HOBBY",
+              },
+            });
+          }
+          const projectName = slug
+            .split("-")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+          project = await prisma.project.create({
+            data: {
+              name: projectName,
+              slug,
+              description: "Synced via MergeMint CLI",
+              defaultBranch: body.branch || "main",
+              workspaceId: workspace.id,
+            },
+          });
+        }
         if (project) {
           const created = await prisma.changelog.create({
             data: {

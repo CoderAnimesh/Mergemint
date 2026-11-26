@@ -22,10 +22,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         project: projectSlug,
+        projectName: project.name,
+        projectDescription: project.description,
         count: project.changelogs.length,
         changelogs: project.changelogs,
       });
     }
+    return NextResponse.json({
+      ok: true,
+      project: projectSlug,
+      count: 0,
+      changelogs: [],
+    });
   }
 
   const filtered = status
