@@ -4,7 +4,6 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma";
 import {
   PLAN_CONFIG,
-  GRACE_PERIOD_DAYS,
   enforceGracePeriodForWorkspace,
   type PlanCode,
 } from "@/lib/billing";
@@ -45,8 +44,10 @@ export async function GET() {
       plan: "HOBBY" as PlanCode,
       billingStatus: "ACTIVE",
       autoPayEnabled: true,
+      razorpayMandateId: null,
       paymentMethodBrand: null,
       paymentMethodLast4: null,
+      purchasedAt: null,
       currentPeriodEnd: null,
       gracePeriodEndsAt: null,
       transactions: [],
@@ -72,7 +73,7 @@ export async function GET() {
       plan: workspace.plan,
       billingStatus: workspace.billingStatus,
       autoPayEnabled: workspace.autoPayEnabled,
-      gokwikMandateId: workspace.gokwikMandateId,
+      razorpayMandateId: workspace.razorpayMandateId,
       paymentMethodBrand: workspace.paymentMethodBrand,
       paymentMethodLast4: workspace.paymentMethodLast4,
       purchasedAt: latestSuccess?.createdAt || workspace.createdAt,
@@ -94,17 +95,13 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
-      action:
-        | "create_order"
-        | "confirm_payment"
-        | "toggle_autopay"
-        | "simulate_autopay_failure";
+      action: "create_order" | "verify_payment" | "toggle_autopay";
       plan?: PlanCode;
       paymentMethod?: "upi" | "card" | "netbanking";
       paymentLast4?: string;
       orderId?: string;
-      gokwikTxnId?: string;
-      gokwikSignature?: string;
+      razorpayPaymentId?: string;
+      razorpaySignature?: string;
       autoPayEnabled?: boolean;
     };
 
@@ -128,86 +125,44 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (body.action === "simulate_autopay_failure") {
-      const graceEnds = new Date(
-        Date.now() + GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000
-      );
-      if (isDatabaseConfigured()) {
-        const ws = await getOrCreateUserWorkspace();
-        if (ws) {
-          await prisma.workspace.update({
-            where: { id: ws.id },
-            data: {
-              billingStatus: "PAST_DUE",
-              gracePeriodEndsAt: graceEnds,
-            },
-          });
-          await prisma.paymentTransaction.create({
-            data: {
-              orderId: `gk_auto_fail_${Date.now()}`,
-              plan: ws.plan,
-              amountInr: PLAN_CONFIG[ws.plan as PlanCode].amountInr,
-              amountUsd: PLAN_CONFIG[ws.plan as PlanCode].amountUsd,
-              paymentMethod: ws.paymentMethodBrand || "upi",
-              autoPay: true,
-              status: "FAILED",
-              workspaceId: ws.id,
-            },
-          });
-        }
-      }
-      return NextResponse.json({
-        ok: true,
-        billingStatus: "PAST_DUE",
-        gracePeriodEndsAt: graceEnds.toISOString(),
-      });
-    }
-
     if (body.action === "create_order") {
-      const orderId = `gk_ord_${Date.now()}`;
-      const appId = process.env.GOKWIK_APP_ID;
-      const appSecret = process.env.GOKWIK_APP_SECRET;
-      const merchantId = process.env.GOKWIK_MERCHANT_ID;
+      const keyId =
+        process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const amountPaise = planInfo.amountInr * 100;
+      let orderId = `order_mm_${Date.now()}`;
+      let mode: "razorpay_live" | "razorpay_checkout" = "razorpay_checkout";
 
-      let checkoutUrl: string | null = null;
-      let mode: "gokwik_live" | "gokwik_checkout" = "gokwik_checkout";
+      if (keyId && keySecret) {
+        const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+        const orderRes = await fetch("https://api.razorpay.com/v1/orders", {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: amountPaise,
+            currency: "INR",
+            receipt: `rcpt_${Date.now()}`,
+            notes: {
+              plan: targetPlan,
+              autoPay: "true",
+            },
+          }),
+        });
 
-      if (appId && appSecret && merchantId) {
-        try {
-          const orderRes = await fetch(
-            process.env.GOKWIK_API_URL || "https://api.gokwik.co/v1/order/create",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                appid: appId,
-                appsecret: appSecret,
-              },
-              body: JSON.stringify({
-                merchant_id: merchantId,
-                order_id: orderId,
-                amount: planInfo.amountInr,
-                currency: "INR",
-                auto_pay: true,
-                subscription_interval: "monthly",
-                redirect_url: `${
-                  process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-                }/dashboard`,
-                notes: { plan: targetPlan },
-              }),
-            }
+        if (!orderRes.ok) {
+          const errText = await orderRes.text();
+          return NextResponse.json(
+            { error: `Razorpay order creation failed: ${errText}` },
+            { status: 502 }
           );
-
-          if (orderRes.ok) {
-            const gkData = (await orderRes.json()) as {
-              data?: { checkout_url?: string; order_id?: string };
-            };
-            checkoutUrl = gkData.data?.checkout_url || null;
-            mode = "gokwik_live";
-          }
-        } catch {
-          // Fall back to embedded checkout modal if live endpoint is unreachable
         }
+
+        const rzpOrder = (await orderRes.json()) as { id: string };
+        orderId = rzpOrder.id;
+        mode = "razorpay_live";
       }
 
       if (isDatabaseConfigured()) {
@@ -232,40 +187,44 @@ export async function POST(req: NextRequest) {
         ok: true,
         mode,
         orderId,
-        appId: appId || null,
-        merchantId: merchantId || null,
-        checkoutUrl,
+        keyId: keyId || null,
         amountInr: planInfo.amountInr,
-        amountUsd: planInfo.amountUsd,
+        amountPaise,
+        currency: "INR",
         plan: targetPlan,
       });
     }
 
-    // Confirm / Verify GoKwik payment and save payment + AutoPay mandate details
-    const orderId = body.orderId || `gk_ord_${Date.now()}`;
-    const appSecret = process.env.GOKWIK_APP_SECRET;
-    if (appSecret && body.gokwikSignature) {
+    // Verify Razorpay payment signature & save subscription + payment details
+    const orderId = body.orderId || `order_mm_${Date.now()}`;
+    const paymentId = body.razorpayPaymentId || `pay_mm_${Date.now()}`;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+    if (keySecret && body.razorpaySignature) {
       const expected = crypto
-        .createHmac("sha256", appSecret)
-        .update(`${orderId}|${body.gokwikTxnId || ""}`)
+        .createHmac("sha256", keySecret)
+        .update(`${orderId}|${paymentId}`)
         .digest("hex");
-      if (expected !== body.gokwikSignature) {
+
+      const a = Buffer.from(expected);
+      const b = Buffer.from(body.razorpaySignature);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
         return NextResponse.json(
-          { error: "Invalid GoKwik payment signature" },
+          { error: "Invalid Razorpay payment signature" },
           { status: 401 }
         );
       }
     }
 
-    const txnId = body.gokwikTxnId || `gktxn_${Date.now()}`;
-    const mandateId = `gk_mnd_${Date.now()}`;
+    const mandateId = `rzp_mnd_${Date.now()}`;
     const methodBrand =
       body.paymentMethod === "card"
-        ? "VISA / Mastercard"
+        ? "Razorpay Card AutoPay"
         : body.paymentMethod === "netbanking"
-          ? "NetBanking AutoPay"
-          : "UPI AutoPay";
-    const last4 = body.paymentLast4 || (body.paymentMethod === "card" ? "4242" : "okicici");
+          ? "Razorpay NetBanking"
+          : "Razorpay UPI AutoPay";
+    const last4 =
+      body.paymentLast4 || (body.paymentMethod === "card" ? "4242" : "okicici");
     const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     if (isDatabaseConfigured()) {
@@ -277,7 +236,7 @@ export async function POST(req: NextRequest) {
             plan: targetPlan,
             billingStatus: "ACTIVE",
             autoPayEnabled: true,
-            gokwikMandateId: mandateId,
+            razorpayMandateId: mandateId,
             paymentMethodBrand: methodBrand,
             paymentMethodLast4: last4,
             currentPeriodEnd: periodEnd,
@@ -288,14 +247,14 @@ export async function POST(req: NextRequest) {
         await prisma.paymentTransaction.upsert({
           where: { orderId },
           update: {
-            gokwikTxnId: txnId,
+            razorpayPaymentId: paymentId,
             status: "SUCCESS",
             paymentMethod: body.paymentMethod || "upi",
             autoPay: true,
           },
           create: {
             orderId,
-            gokwikTxnId: txnId,
+            razorpayPaymentId: paymentId,
             plan: targetPlan,
             amountInr: planInfo.amountInr,
             amountUsd: planInfo.amountUsd,
@@ -313,17 +272,18 @@ export async function POST(req: NextRequest) {
       plan: targetPlan,
       billingStatus: "ACTIVE",
       autoPayEnabled: true,
-      gokwikMandateId: mandateId,
+      razorpayMandateId: mandateId,
       paymentMethodBrand: methodBrand,
       paymentMethodLast4: last4,
       currentPeriodEnd: periodEnd.toISOString(),
       orderId,
-      gokwikTxnId: txnId,
+      razorpayPaymentId: paymentId,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "GoKwik billing error" },
+      { error: error instanceof Error ? error.message : "Razorpay billing error" },
       { status: 400 }
     );
   }
 }
+

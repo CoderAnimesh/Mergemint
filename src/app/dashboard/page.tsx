@@ -84,7 +84,7 @@ interface GitHubRepo {
 interface BillingTransaction {
   id: string;
   orderId: string;
-  gokwikTxnId: string | null;
+  razorpayPaymentId: string | null;
   plan: PlanCode;
   amountInr: number;
   amountUsd: number;
@@ -97,13 +97,31 @@ interface BillingTransaction {
 interface BillingState {
   billingStatus: "ACTIVE" | "PAST_DUE" | "CANCELLED";
   autoPayEnabled: boolean;
-  gokwikMandateId: string | null;
+  razorpayMandateId: string | null;
   paymentMethodBrand: string | null;
   paymentMethodLast4: string | null;
   purchasedAt: string | null;
   currentPeriodEnd: string | null;
   gracePeriodEndsAt: string | null;
   transactions: BillingTransaction[];
+}
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+  }
+}
+
+function loadRazorpayScript(): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.Razorpay) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
 }
 
 const PLAN_DETAILS: Record<
@@ -153,7 +171,7 @@ function DashboardInner() {
   const [billing, setBilling] = useState<BillingState>({
     billingStatus: "ACTIVE",
     autoPayEnabled: true,
-    gokwikMandateId: null,
+    razorpayMandateId: null,
     paymentMethodBrand: null,
     paymentMethodLast4: null,
     purchasedAt: null,
@@ -162,7 +180,7 @@ function DashboardInner() {
     transactions: [],
   });
 
-  const [gokwikModal, setGokwikModal] = useState<{
+  const [razorpayModal, setRazorpayModal] = useState<{
     open: boolean;
     targetPlan: PlanCode;
     orderId: string;
@@ -174,14 +192,14 @@ function DashboardInner() {
 
   const loadBilling = async () => {
     try {
-      const res = await fetch("/api/v1/billing/gokwik");
+      const res = await fetch("/api/v1/billing/razorpay");
       if (res.ok) {
         const data = (await res.json()) as BillingState & { plan?: PlanCode };
         if (data.plan) setPlan(data.plan);
         setBilling({
           billingStatus: data.billingStatus || "ACTIVE",
           autoPayEnabled: data.autoPayEnabled ?? true,
-          gokwikMandateId: data.gokwikMandateId || null,
+          razorpayMandateId: data.razorpayMandateId || null,
           paymentMethodBrand: data.paymentMethodBrand || null,
           paymentMethodLast4: data.paymentMethodLast4 || null,
           purchasedAt: data.purchasedAt || null,
@@ -257,25 +275,66 @@ function DashboardInner() {
     void loadBilling();
   }, [status]);
 
-  const handleStartGokwikCheckout = async (targetPlan: PlanCode) => {
+  const handleStartRazorpayCheckout = async (targetPlan: PlanCode) => {
     if (targetPlan === "HOBBY") return;
-    const res = await fetch("/api/v1/billing/gokwik", {
+    const res = await fetch("/api/v1/billing/razorpay", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "create_order", plan: targetPlan }),
     });
     const data = (await res.json()) as {
-      checkoutUrl?: string | null;
       orderId: string;
+      keyId?: string | null;
       amountInr: number;
+      amountPaise: number;
+      currency: string;
     };
 
-    if (data.checkoutUrl) {
-      window.location.href = data.checkoutUrl;
-      return;
+    if (data.keyId) {
+      const sdkLoaded = await loadRazorpayScript();
+      if (sdkLoaded && window.Razorpay) {
+        const rzp = new window.Razorpay({
+          key: data.keyId,
+          amount: data.amountPaise,
+          currency: data.currency || "INR",
+          name: "MergeMint",
+          description: `${PLAN_DETAILS[targetPlan].label} Plan (AutoPay Monthly)`,
+          order_id: data.orderId,
+          prefill: {
+            name: session?.user?.name || "",
+            email: session?.user?.email || "",
+          },
+          theme: { color: "#10B981" },
+          handler: async (response: {
+            razorpay_payment_id: string;
+            razorpay_order_id: string;
+            razorpay_signature: string;
+          }) => {
+            const verifyRes = await fetch("/api/v1/billing/razorpay", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "verify_payment",
+                plan: targetPlan,
+                orderId: response.razorpay_order_id || data.orderId,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+                paymentMethod: "upi",
+              }),
+            });
+            if (verifyRes.ok) {
+              setPlan(targetPlan);
+              setConnectError(null);
+              await loadBilling();
+            }
+          },
+        });
+        rzp.open();
+        return;
+      }
     }
 
-    setGokwikModal({
+    setRazorpayModal({
       open: true,
       targetPlan,
       orderId: data.orderId,
@@ -305,7 +364,7 @@ function DashboardInner() {
     ) {
       checkoutStartedRef.current = true;
       setActiveTab("settings");
-      void handleStartGokwikCheckout(checkoutPlan);
+      void handleStartRazorpayCheckout(checkoutPlan);
     }
   }, [status, searchParams]);
 
@@ -394,34 +453,34 @@ function DashboardInner() {
     }
   };
 
-  const handleConfirmGokwikPayment = async () => {
-    if (!gokwikModal) return;
-    setGokwikModal((prev) => (prev ? { ...prev, processing: true } : null));
+  const handleConfirmRazorpayPayment = async () => {
+    if (!razorpayModal) return;
+    setRazorpayModal((prev) => (prev ? { ...prev, processing: true } : null));
 
-    const res = await fetch("/api/v1/billing/gokwik", {
+    const res = await fetch("/api/v1/billing/razorpay", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "confirm_payment",
-        plan: gokwikModal.targetPlan,
-        orderId: gokwikModal.orderId,
-        paymentMethod: gokwikModal.method,
-        paymentLast4: gokwikModal.last4,
+        action: "verify_payment",
+        plan: razorpayModal.targetPlan,
+        orderId: razorpayModal.orderId,
+        paymentMethod: razorpayModal.method,
+        paymentLast4: razorpayModal.last4,
       }),
     });
 
     if (res.ok) {
-      setPlan(gokwikModal.targetPlan);
+      setPlan(razorpayModal.targetPlan);
       setConnectError(null);
       await loadBilling();
     }
-    setGokwikModal(null);
+    setRazorpayModal(null);
   };
 
   const handleToggleAutoPay = async () => {
     const next = !billing.autoPayEnabled;
     setBilling((prev) => ({ ...prev, autoPayEnabled: next }));
-    await fetch("/api/v1/billing/gokwik", {
+    await fetch("/api/v1/billing/razorpay", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "toggle_autopay", autoPayEnabled: next }),
@@ -933,7 +992,7 @@ function DashboardInner() {
                             </td>
                             <td className="py-2.5 text-emerald-300">{t.orderId}</td>
                             <td className="py-2.5 text-zinc-400">
-                              {t.gokwikTxnId || "—"}
+                              {t.razorpayPaymentId || "—"}
                             </td>
                             <td className="py-2.5">
                               {PLAN_DETAILS[t.plan]?.label || t.plan}
@@ -1037,7 +1096,7 @@ function DashboardInner() {
                   <div className="flex items-center gap-2">
                     <CreditCard className="h-4 w-4 text-emerald-400" />
                     <h2 className="text-sm font-semibold text-white">
-                      Subscription, Renewal Dates &amp; GoKwik Payment
+                      Subscription, Renewal Dates &amp; Razorpay Payment
                     </h2>
                   </div>
                   <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 font-mono text-xs text-emerald-300">
@@ -1138,7 +1197,7 @@ function DashboardInner() {
                           </p>
                           {tier !== "HOBBY" && (
                             <p className="mt-1.5 text-[11px] text-emerald-400/90">
-                              AutoPay via GoKwik • 3-day grace on failed renewal
+                              AutoPay via Razorpay • 3-day grace on failed renewal
                             </p>
                           )}
                         </div>
@@ -1146,7 +1205,7 @@ function DashboardInner() {
                         <button
                           type="button"
                           disabled={isCurrent || tier === "HOBBY"}
-                          onClick={() => handleStartGokwikCheckout(tier)}
+                          onClick={() => handleStartRazorpayCheckout(tier)}
                           className={`mt-5 w-full rounded-lg px-3 py-2 text-xs font-semibold transition ${
                             isCurrent || tier === "HOBBY"
                               ? "border border-white/10 bg-white/[0.04] text-zinc-500"
@@ -1157,7 +1216,7 @@ function DashboardInner() {
                             ? "Active Plan"
                             : tier === "HOBBY"
                               ? "Included"
-                              : `Upgrade & Pay ${info.priceInr} (GoKwik)`}
+                              : `Upgrade & Pay ${info.priceInr} (Razorpay)`}
                         </button>
                       </div>
                     );
@@ -1169,9 +1228,9 @@ function DashboardInner() {
         </div>
       </main>
 
-      {/* GoKwik Checkout Modal */}
+      {/* Razorpay Checkout Modal (Fallback when RAZORPAY_KEY_ID is not yet set) */}
       <AnimatePresence>
-        {gokwikModal?.open && (
+        {razorpayModal?.open && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1189,16 +1248,16 @@ function DashboardInner() {
                   <ShieldCheck className="h-5 w-5 text-emerald-400" />
                   <div>
                     <h3 className="text-sm font-semibold text-white">
-                      GoKwik Secure Checkout
+                      Razorpay Checkout
                     </h3>
                     <p className="font-mono text-[11px] text-zinc-500">
-                      Order {gokwikModal.orderId}
+                      Order {razorpayModal.orderId}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setGokwikModal(null)}
+                  onClick={() => setRazorpayModal(null)}
                   className="rounded-md p-1 text-zinc-400 hover:bg-white/[0.06] hover:text-white"
                 >
                   <X className="h-4 w-4" />
@@ -1209,14 +1268,14 @@ function DashboardInner() {
                 <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-[#09090B] p-3.5">
                   <div>
                     <div className="text-zinc-300">
-                      MergeMint {PLAN_DETAILS[gokwikModal.targetPlan].label} Plan
+                      MergeMint {PLAN_DETAILS[razorpayModal.targetPlan].label} Plan
                     </div>
                     <div className="text-[11px] text-emerald-400">
                       AutoPay Mandate • Cancels in 3 days if renewal fails
                     </div>
                   </div>
                   <span className="text-base font-semibold text-white">
-                    ₹{gokwikModal.amountInr}/mo
+                    ₹{razorpayModal.amountInr}/mo
                   </span>
                 </div>
 
@@ -1226,9 +1285,9 @@ function DashboardInner() {
                   </label>
                   <input
                     type="text"
-                    value={gokwikModal.last4}
+                    value={razorpayModal.last4}
                     onChange={(e) =>
-                      setGokwikModal((prev) =>
+                      setRazorpayModal((prev) =>
                         prev ? { ...prev, last4: e.target.value } : null
                       )
                     }
@@ -1250,12 +1309,12 @@ function DashboardInner() {
                       key={m.id}
                       type="button"
                       onClick={() =>
-                        setGokwikModal((prev) =>
+                        setRazorpayModal((prev) =>
                           prev ? { ...prev, method: m.id } : null
                         )
                       }
                       className={`flex w-full items-center justify-between rounded-xl border px-3.5 py-2.5 text-left transition ${
-                        gokwikModal.method === m.id
+                        razorpayModal.method === m.id
                           ? "border-emerald-500/50 bg-emerald-500/10 text-white"
                           : "border-white/[0.08] bg-[#09090B] text-zinc-400 hover:border-white/20"
                       }`}
@@ -1268,19 +1327,19 @@ function DashboardInner() {
 
                 <button
                   type="button"
-                  disabled={gokwikModal.processing}
-                  onClick={handleConfirmGokwikPayment}
+                  disabled={razorpayModal.processing}
+                  onClick={handleConfirmRazorpayPayment}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 py-2.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-60"
                 >
-                  {gokwikModal.processing ? (
+                  {razorpayModal.processing ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Verifying with GoKwik...</span>
+                      <span>Verifying with Razorpay...</span>
                     </>
                   ) : (
                     <>
                       <Lock className="h-3.5 w-3.5" />
-                      <span>Pay ₹{gokwikModal.amountInr} Now</span>
+                      <span>Pay ₹{razorpayModal.amountInr} Now</span>
                     </>
                   )}
                 </button>

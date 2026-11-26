@@ -57,7 +57,7 @@ async function handleAutoPaySweep(req: NextRequest) {
 
   let renewedCount = 0;
   for (const ws of dueWorkspaces) {
-    const hasMandate = Boolean(ws.gokwikMandateId);
+    const hasMandate = Boolean(ws.razorpayMandateId);
     const planInfo = PLAN_CONFIG[ws.plan as PlanCode];
 
     if (hasMandate) {
@@ -68,8 +68,8 @@ async function handleAutoPaySweep(req: NextRequest) {
       });
       await prisma.paymentTransaction.create({
         data: {
-          orderId: `gk_auto_${Date.now()}_${ws.id.slice(0, 6)}`,
-          gokwikTxnId: `gktxn_auto_${Date.now()}`,
+          orderId: `order_auto_${Date.now()}_${ws.id.slice(0, 6)}`,
+          razorpayPaymentId: `pay_auto_${Date.now()}`,
           plan: ws.plan,
           amountInr: planInfo.amountInr,
           amountUsd: planInfo.amountUsd,

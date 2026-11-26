@@ -27,7 +27,7 @@ model Workspace {
   plan               PlanTier             @default(HOBBY)
   billingStatus      BillingStatus        @default(ACTIVE)
   autoPayEnabled     Boolean              @default(true)
-  gokwikMandateId    String?
+  razorpayMandateId  String?
   paymentMethodBrand String?
   paymentMethodLast4 String?
   currentPeriodEnd   DateTime?
@@ -43,18 +43,18 @@ model Workspace {
 }
 
 model PaymentTransaction {
-  id            String   @id @default(cuid())
-  orderId       String   @unique
-  gokwikTxnId   String?
-  plan          PlanTier
-  amountInr     Int
-  amountUsd     Int
-  paymentMethod String   @default("upi")
-  autoPay       Boolean  @default(true)
-  status        String   @default("PENDING")
-  workspaceId   String
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  createdAt     DateTime @default(now())
+  id                String    @id @default(cuid())
+  orderId           String    @unique
+  razorpayPaymentId String?
+  plan              PlanTier
+  amountInr         Int
+  amountUsd         Int
+  paymentMethod     String    @default("upi")
+  autoPay           Boolean   @default(true)
+  status            String    @default("PENDING")
+  workspaceId       String
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt         DateTime  @default(now())
 
   @@index([workspaceId, createdAt])
 }
