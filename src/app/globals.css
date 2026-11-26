@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    background-color: #09090b;
+    color: #fafafa;
+    scroll-behavior: smooth;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  html.light {
+    color-scheme: light;
+    background-color: #fafafa;
+    color: #09090b;
+  }
+
+  body {
+    background-color: #09090b;
+    color: #fafafa;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  html.light body {
+    background-color: #fafafa;
+    color: #09090b;
+  }
+
+  ::selection {
+    background-color: rgba(16, 185, 129, 0.3);
+    color: #ffffff;
+  }
+}
+
+/* Crisp Light Mode surface & text adaptations */
+html.light .bg-\[\#09090B\],
+html.light .bg-\[\#09090B\]\/75,
+html.light .bg-\[\#0B0B0E\] {
+  background-color: rgba(250, 250, 250, 0.92) !important;
+}
+
+html.light .bg-\[\#111114\],
+html.light .bg-\[\#111114\]\/80,
+html.light .bg-\[\#111114\]\/70,
+html.light .bg-\[\#111114\]\/60,
+html.light .bg-\[\#0D0D10\],
+html.light .bg-\[\#131317\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(9, 9, 11, 0.05);
+}
+
+html.light .text-white {
+  color: #09090b !important;
+}
+
+html.light .text-zinc-100,
+html.light .text-zinc-200,
+html.light .text-zinc-300 {
+  color: #27272a !important;
+}
+
+html.light .text-zinc-400 {
+  color: #52525b !important;
+}
+
+html.light .text-zinc-500 {
+  color: #71717a !important;
+}
+
+html.light .border-white\/\[0\.08\],
+html.light .border-white\/\[0\.09\],
+html.light .border-white\/\[0\.07\],
+html.light .border-white\/\[0\.06\],
+html.light .border-white\/10 {
+  border-color: rgba(9, 9, 11, 0.1) !important;
+}
+
+html.light .bg-white\/\[0\.02\],
+html.light .bg-white\/\[0\.03\],
+html.light .bg-white\/\[0\.04\],
+html.light .bg-white\/\[0\.06\],
+html.light .bg-white\/\[0\.08\] {
+  background-color: rgba(9, 9, 11, 0.04) !important;
+}
+
+html.light .bg-gradient-to-b.from-white {
+  background-image: linear-gradient(to bottom, #09090b, #27272a, #52525b) !important;
+}
+
+html.light .bg-white.text-zinc-950 {
+  background-color: #09090b !important;
+  color: #ffffff !important;
+}
+
+.glass-panel {
+  background: rgba(17, 17, 20, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.hairline-border {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  name          String?
+  avatarUrl     String?
+  githubId      String?     @unique
+  githubLogin   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  workspaces    Workspace[]
+  apiKeys       ApiKey[]
+}
+
+model Workspace {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  plan      PlanTier  @default(HOBBY)
+  ownerId   String
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects  Project[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([ownerId])
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  name           String
+  slug           String        @unique
+  description    String?
+  githubRepo     String?       @unique
+  defaultBranch  String        @default("main")
+  webhookSecret  String?
+  workspaceId    String
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  changelogs     Changelog[]
+  roadmapItems   RoadmapItem[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([workspaceId])
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  keyHash    String    @unique
+  prefix     String
+  lastUsedAt DateTime?
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Changelog {
+  id           String          @id @default(cuid())
+  version      String
+  title        String
+  summary      String
+  features     String[]        @default([])
+  improvements String[]        @default([])
+  bugFixes     String[]        @default([])
+  rawCommits   Json?
+  status       ChangelogStatus @default(DRAFT)
+  publishedAt  DateTime?
+  projectId    String
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([projectId, status])
+}
+
+model RoadmapItem {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  status      RoadmapStatus @default(PLANNED)
+  category    String        @default("Feature")
+  votes       Int           @default(1)
+  authorName  String        @default("Community")
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([projectId, status])
+}
+
+enum PlanTier {
+  HOBBY
+  PRO
+  TEAM
+}
+
+enum ChangelogStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum RoadmapStatus {
+  PLANNED
+  IN_PROGRESS
+  SHIPPED
+}
+
