@@ -72,7 +72,7 @@ async function main() {
     }
   }
 
-  console.log("Seeded ShipLog database successfully.");
+  console.log("Seeded MergeMint database successfully.");
 }
 
 main()

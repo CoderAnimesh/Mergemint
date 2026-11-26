@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const auth = await authenticateBearerToken(req);
     if (!auth.valid) {
       return NextResponse.json(
-        { error: "Invalid or missing Bearer token. Run `shiplog login` first." },
+        { error: "Invalid or missing Bearer token. Run `mergemint login` first." },
         { status: 401 }
       );
     }

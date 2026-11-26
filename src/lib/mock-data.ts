@@ -73,13 +73,13 @@ export const DEMO_CHANGELOGS: MockChangelog[] = [
     version: "v2.4.0",
     title: "Edge Streaming & Zero-Config CLI Sync",
     summary:
-      "Introduced sub-50ms edge streaming for release webhooks alongside one-command local commit synchronization from @shiplog/cli.",
+      "Introduced sub-50ms edge streaming for release webhooks alongside one-command local commit synchronization from @mergemint/cli.",
     publishedAt: "2026-11-24",
     status: "PUBLISHED",
     commitCount: 14,
     features: [
       "Added real-time Edge Streaming support for multi-region webhook fanout",
-      "Introduced `shiplog push --draft` to stage AI-summarized releases straight from local git history",
+      "Introduced `mergemint push --draft` to stage AI-summarized releases straight from local git history",
       "Launched Public Roadmap RSS & JSON Feed endpoints at `/[slug]/rss.xml`",
     ],
     improvements: [
@@ -96,7 +96,7 @@ export const DEMO_CHANGELOGS: MockChangelog[] = [
     version: "v2.3.1",
     title: "VS Code Sidebar & Optimistic Roadmap Votes",
     summary:
-      "Shipped the official ShipLog Explorer extension for VS Code and instant optimistic upvoting on public roadmap boards.",
+      "Shipped the official MergeMint Explorer extension for VS Code and instant optimistic upvoting on public roadmap boards.",
     publishedAt: "2026-11-14",
     status: "PUBLISHED",
     commitCount: 9,
@@ -122,7 +122,7 @@ export const DEMO_CHANGELOGS: MockChangelog[] = [
     status: "DRAFT",
     commitCount: 7,
     features: [
-      "Two-way status sync between ShipLog Roadmap items and Linear issues",
+      "Two-way status sync between MergeMint Roadmap items and Linear issues",
       "Custom CNAME domain provisioning with automatic TLS certificates",
     ],
     improvements: [
@@ -139,7 +139,7 @@ export const DEMO_ROADMAP_ITEMS: MockRoadmapItem[] = [
     id: "rm_1",
     title: "Linear & Jira Two-Way Issue Sync",
     description:
-      "Automatically move ShipLog roadmap items to In Progress or Shipped when linked Linear issues change state.",
+      "Automatically move MergeMint roadmap items to In Progress or Shipped when linked Linear issues change state.",
     status: "IN_PROGRESS",
     category: "Integration",
     votes: 142,
@@ -187,7 +187,7 @@ export const DEMO_ROADMAP_ITEMS: MockRoadmapItem[] = [
     status: "SHIPPED",
     category: "DX",
     votes: 204,
-    authorName: "alex@shiplog.dev",
+    authorName: "alex@mergemint.dev",
     createdAt: "2026-10-18",
   },
   {

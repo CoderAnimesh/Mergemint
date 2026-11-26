@@ -18,7 +18,7 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
   },
-  secret: process.env.NEXTAUTH_SECRET || "shiplog-dev-fallback-secret-change-me",
+  secret: process.env.NEXTAUTH_SECRET || "mergemint-dev-fallback-secret-change-me",
   callbacks: {
     async signIn({ user, account, profile }) {
       if (!user.email) return true;
@@ -34,7 +34,7 @@ export const authOptions: NextAuthOptions = {
           },
           create: {
             email: user.email,
-            name: user.name ?? "ShipLog Developer",
+            name: user.name ?? "MergeMint Developer",
             avatarUrl: user.image ?? undefined,
             githubId: githubProfile?.id ? String(githubProfile.id) : account?.providerAccountId,
             githubLogin: githubProfile?.login ?? undefined,

@@ -60,9 +60,9 @@ export async function GET(req: NextRequest) {
   const xml = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
   <channel>
-    <title>${escapeXml(`${projectSlug} Changelog — ShipLog`)}</title>
+    <title>${escapeXml(`${projectSlug} Changelog — MergeMint`)}</title>
     <link>${escapeXml(`${baseUrl}/${projectSlug}/changelog`)}</link>
-    <description>Automated product changelog powered by ShipLog</description>
+    <description>Automated product changelog powered by MergeMint</description>
     ${itemsXml}
   </channel>
 </rss>`;

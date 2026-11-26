@@ -16,6 +16,6 @@ if (process.env.NODE_ENV !== "production") {
 
 export function isDatabaseConfigured(): boolean {
   const url = process.env.DATABASE_URL;
-  return Boolean(url && !url.includes("postgres:postgres@localhost:5432/shiplog"));
+  return Boolean(url && !url.includes("postgres:postgres@localhost:5432/mergemint"));
 }
 

@@ -11,7 +11,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[ShipLog Error]", error);
+    console.error("[MergeMint Error]", error);
   }, [error]);
 
   return (

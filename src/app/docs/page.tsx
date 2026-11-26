@@ -198,7 +198,7 @@ export default function DocsPage() {
                 GITHUB_WEBHOOK_SECRET
               </code>{" "}
               to verify HMAC-SHA256 signatures automatically, or drop the workflow below
-              into <code className="font-mono text-xs text-zinc-300">.github/workflows/shiplog.yml</code>:
+              into <code className="font-mono text-xs text-zinc-300">.github/workflows/mergemint.yml</code>:
             </p>
             <CodeBlock
               filename=".github/workflows/mergemint.yml"

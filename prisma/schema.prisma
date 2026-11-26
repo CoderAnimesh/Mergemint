@@ -21,17 +21,42 @@ model User {
 }
 
 model Workspace {
-  id        String    @id @default(cuid())
-  name      String
-  slug      String    @unique
-  plan      PlanTier  @default(HOBBY)
-  ownerId   String
-  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  projects  Project[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                 String               @id @default(cuid())
+  name               String
+  slug               String               @unique
+  plan               PlanTier             @default(HOBBY)
+  billingStatus      BillingStatus        @default(ACTIVE)
+  autoPayEnabled     Boolean              @default(true)
+  gokwikMandateId    String?
+  paymentMethodBrand String?
+  paymentMethodLast4 String?
+  currentPeriodEnd   DateTime?
+  gracePeriodEndsAt  DateTime?
+  ownerId            String
+  owner              User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  projects           Project[]
+  transactions       PaymentTransaction[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@index([ownerId])
+}
+
+model PaymentTransaction {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  gokwikTxnId   String?
+  plan          PlanTier
+  amountInr     Int
+  amountUsd     Int
+  paymentMethod String   @default("upi")
+  autoPay       Boolean  @default(true)
+  status        String   @default("PENDING")
+  workspaceId   String
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
 }
 
 model Project {
@@ -104,6 +129,12 @@ enum PlanTier {
   HOBBY
   PRO
   TEAM
+}
+
+enum BillingStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
 }
 
 enum ChangelogStatus {

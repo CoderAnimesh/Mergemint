@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_APP_URL || "https://app.shiplog.dev";
+  const baseUrl = process.env.NEXT_APP_URL || "https://app.mergemint.dev";
   return {
     rules: {
       userAgent: "*",

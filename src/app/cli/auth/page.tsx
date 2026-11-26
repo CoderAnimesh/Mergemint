@@ -21,7 +21,7 @@ function CliAuthInner() {
         const res = await fetch("/api/v1/keys", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: `ShipLog CLI (${new Date().toLocaleDateString()})` }),
+          body: JSON.stringify({ name: `MergeMint CLI (${new Date().toLocaleDateString()})` }),
         });
 
         if (res.ok) {
@@ -111,7 +111,7 @@ export default function CliAuthPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center bg-[#09090B] text-xs text-zinc-400">
-          Authorizing ShipLog CLI...
+          Authorizing MergeMint CLI...
         </div>
       }
     >

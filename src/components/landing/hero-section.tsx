@@ -292,7 +292,7 @@ export function HeroSection() {
                         </div>
                       </div>
                       <div className="mt-4 flex items-center justify-between border-t border-white/[0.06] pt-3 text-[11px] text-zinc-500">
-                        <span>Command: ShipLog: Generate Changelog from Recent Commits</span>
+                        <span>Command: MergeMint: Generate Changelog from Recent Commits</span>
                         <span className="font-mono text-zinc-400">⌘⇧P</span>
                       </div>
                     </div>

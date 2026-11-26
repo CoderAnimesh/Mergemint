@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useSession, signIn } from "next-auth/react";
 import { motion, AnimatePresence } from "motion/react";
 import { Check } from "lucide-react";
 
 const PLANS = [
   {
+    id: "HOBBY" as const,
     name: "Hobby",
     monthly: 0,
     yearly: 0,
@@ -21,23 +23,25 @@ const PLANS = [
     highlighted: false,
   },
   {
+    id: "PRO" as const,
     name: "Pro",
-    monthly: 19,
-    yearly: 15,
+    monthly: 49,
+    yearly: 39,
     description: "For fast-moving startups shipping weekly releases.",
     features: [
       "Up to 10 GitHub repositories",
       "Gemini 2.5 Flash PR diff synthesis",
       "Custom CNAME domain & RSS feeds",
-      "Slack & Discord release webhooks",
+      "AutoPay via GoKwik + Slack webhooks",
     ],
     cta: "Upgrade to Pro",
     highlighted: true,
   },
   {
-    name: "Team",
-    monthly: 49,
-    yearly: 39,
+    id: "TEAM" as const,
+    name: "Ultra",
+    monthly: 69,
+    yearly: 55,
     description: "For engineering orgs with multi-product roadmaps.",
     features: [
       "Unlimited repositories & workspaces",
@@ -45,13 +49,29 @@ const PLANS = [
       "Role-based access & audit logs",
       "Priority webhook SLA & support",
     ],
-    cta: "Contact Sales",
+    cta: "Upgrade to Ultra",
     highlighted: false,
   },
 ];
 
 export function PricingSection() {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
+  const { data: session } = useSession();
+  const router = useRouter();
+
+  const handlePlanSelect = (planId: "HOBBY" | "PRO" | "TEAM") => {
+    const targetUrl =
+      planId === "HOBBY"
+        ? "/dashboard"
+        : `/dashboard?tab=settings&checkout=${planId}`;
+
+    if (!session?.user) {
+      void signIn("github", { callbackUrl: targetUrl });
+      return;
+    }
+
+    router.push(targetUrl);
+  };
 
   return (
     <section id="pricing" className="py-24">
@@ -128,7 +148,7 @@ export function PricingSection() {
                         transition={{ duration: 0.18 }}
                         className="text-4xl font-semibold tracking-tight text-white"
                       >
-                        ${price}
+                        ₹{price}
                       </motion.span>
                     </AnimatePresence>
                     <span className="text-xs text-zinc-500">/month</span>
@@ -144,16 +164,17 @@ export function PricingSection() {
                   </ul>
                 </div>
 
-                <Link
-                  href="/dashboard"
-                  className={`mt-8 block rounded-lg px-4 py-2.5 text-center text-xs font-semibold transition ${
+                <button
+                  type="button"
+                  onClick={() => handlePlanSelect(plan.id)}
+                  className={`mt-8 block w-full rounded-lg px-4 py-2.5 text-center text-xs font-semibold transition ${
                     plan.highlighted
                       ? "bg-white text-zinc-950 hover:bg-zinc-200"
                       : "border border-white/10 bg-white/[0.04] text-white hover:bg-white/[0.08]"
                   }`}
                 >
                   {plan.cta}
-                </Link>
+                </button>
               </div>
             );
           })}

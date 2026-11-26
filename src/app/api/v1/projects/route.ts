@@ -1,23 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { enforceGracePeriodForWorkspace } from "@/lib/billing";
 import { prisma, isDatabaseConfigured } from "@/lib/prisma";
 import { DEMO_PROJECTS } from "@/lib/mock-data";
 
+const PLAN_REPO_LIMITS: Record<string, number> = {
+  HOBBY: 1,
+  PRO: 10,
+  TEAM: Number.POSITIVE_INFINITY,
+};
+
 export async function GET() {
   if (!isDatabaseConfigured()) {
-    return NextResponse.json({ ok: true, projects: DEMO_PROJECTS });
+    return NextResponse.json({ ok: true, projects: DEMO_PROJECTS, plan: "HOBBY" });
   }
 
   try {
+    const sessionUser = await getSessionUser();
+    const workspace = sessionUser?.email
+      ? await prisma.workspace.findFirst({
+          where: { owner: { email: sessionUser.email } },
+          include: { projects: { orderBy: { createdAt: "desc" } } },
+        })
+      : null;
+
+    if (workspace) {
+      const updatedWs = await enforceGracePeriodForWorkspace(workspace.id);
+      return NextResponse.json({
+        ok: true,
+        projects: workspace.projects,
+        plan: updatedWs?.plan || workspace.plan,
+      });
+    }
+
     const projects = await prisma.project.findMany({
       orderBy: { createdAt: "desc" },
     });
-    return NextResponse.json({ ok: true, projects });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch projects" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true, projects, plan: "HOBBY" });
+  } catch {
+    return NextResponse.json({
+      ok: true,
+      projects: [],
+      plan: "HOBBY",
+    });
   }
 }
 
@@ -28,6 +53,7 @@ export async function POST(req: NextRequest) {
       slug?: string;
       githubRepo?: string;
       description?: string;
+      defaultBranch?: string;
     };
 
     if (!body.githubRepo && !body.slug) {
@@ -61,7 +87,7 @@ export async function POST(req: NextRequest) {
           slug,
           githubRepo: body.githubRepo || `acme-corp/${slug}`,
           description: body.description || "Connected repository",
-          defaultBranch: "main",
+          defaultBranch: body.defaultBranch || "main",
           webhookStatus: "active",
           lastSync: "Just now",
         },
@@ -74,31 +100,56 @@ export async function POST(req: NextRequest) {
       update: {},
       create: {
         email: sessionUser?.email || "founder@acme.dev",
-        name: sessionUser?.name || "ShipLog Developer",
+        name: sessionUser?.name || "MergeMint Developer",
       },
     });
 
-    const workspace = await prisma.workspace.upsert({
-      where: { slug: "default-workspace" },
-      update: {},
-      create: {
-        name: "Default Workspace",
-        slug: "default-workspace",
-        ownerId: user.id,
-      },
+    let workspace = await prisma.workspace.findFirst({
+      where: { ownerId: user.id },
+      include: { projects: true },
     });
+
+    if (!workspace) {
+      workspace = await prisma.workspace.create({
+        data: {
+          name: `${user.name || "My"} Workspace`,
+          slug: `ws-${user.id.slice(0, 8)}`,
+          ownerId: user.id,
+          plan: "HOBBY",
+        },
+        include: { projects: true },
+      });
+    }
+
+    const limit = PLAN_REPO_LIMITS[workspace.plan] ?? 1;
+    const alreadyConnected = workspace.projects.some(
+      (p) => p.githubRepo === body.githubRepo || p.slug === slug
+    );
+
+    if (!alreadyConnected && workspace.projects.length >= limit) {
+      return NextResponse.json(
+        {
+          error: `Your ${workspace.plan === "HOBBY" ? "Free" : workspace.plan} plan allows up to ${limit} connected repository. Upgrade to Pro or Ultra in Settings to connect more.`,
+          code: "PLAN_LIMIT_REACHED",
+          plan: workspace.plan,
+        },
+        { status: 403 }
+      );
+    }
 
     const project = await prisma.project.upsert({
       where: { slug },
       update: {
         githubRepo: body.githubRepo,
         description: body.description,
+        defaultBranch: body.defaultBranch || "main",
       },
       create: {
         name,
         slug,
         githubRepo: body.githubRepo,
-        description: body.description || "Connected via ShipLog",
+        description: body.description || "Connected via MergeMint",
+        defaultBranch: body.defaultBranch || "main",
         workspaceId: workspace.id,
       },
     });
@@ -111,4 +162,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

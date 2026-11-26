@@ -79,7 +79,7 @@ function heuristicSummarize(commits: RawCommitInput[]): GeneratedReleaseNotes {
 
 export async function generateChangelogFromCommits(
   commits: RawCommitInput[],
-  projectName = "ShipLog Project",
+  projectName = "MergeMint Project",
   prDiffs?: string
 ): Promise<GeneratedReleaseNotes> {
   const meaningful = filterMeaningfulCommits(commits);
@@ -176,7 +176,7 @@ ${prDiffs ? `\nAdditional PR Diff Context:\n${prDiffs.slice(0, 3000)}` : ""}`;
       source: "gemini",
     };
   } catch (error) {
-    console.error("[ShipLog Gemini Error]", error);
+    console.error("[MergeMint Gemini Error]", error);
     return heuristicSummarize(inputCommits);
   }
 }

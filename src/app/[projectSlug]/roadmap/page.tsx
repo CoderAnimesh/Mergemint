@@ -46,7 +46,7 @@ export default function PublicRoadmapPage() {
       id: `rm_${Date.now()}`,
       title: newTitle.trim(),
       description:
-        newDesc.trim() || "Submitted from the public ShipLog roadmap board.",
+        newDesc.trim() || "Submitted from the public MergeMint roadmap board.",
       status: "PLANNED",
       category: "Feature",
       votes: 1,
