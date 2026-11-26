@@ -12,7 +12,7 @@ function escapeXml(str: string): string {
 
 export async function GET(req: NextRequest) {
   const projectSlug = req.nextUrl.searchParams.get("project") || "acme-cloud";
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_APP_URL || "http://localhost:3000";
 
   let entries = DEMO_CHANGELOGS.filter((c) => c.status === "PUBLISHED").map((c) => ({
     id: c.id,
